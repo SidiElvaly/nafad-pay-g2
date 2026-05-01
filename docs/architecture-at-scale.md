@@ -166,11 +166,60 @@ can be done in any order except where noted.
 ### Threat 3 · XSS on the React frontend
 - **Vector**: malicious user crafts a transaction reference containing
   `<script>` that pops up in the dashboard.
-- **Mitigation 1**: Content Security Policy header set via CloudFront response
-  policy: `default-src 'self'; script-src 'self' 'nonce-{random}'`.
-- **Mitigation 2**: React's default JSX escaping for all dynamic content.
+- **Mitigation 1**: Content Security Policy via CloudFront response policy with
+  a **per-request nonce**: `default-src 'self'; script-src 'self' 'nonce-{random}'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`.
+  Inline scripts must carry the matching `nonce` attribute or they're refused.
+- **Mitigation 2**: React's default JSX escaping for all dynamic content
+  (`{value}` is HTML-escaped automatically; the `Trusted Types` API is enabled
+  in CSP to fail-closed if a sink ever receives a raw string).
 - **Mitigation 3**: Code review checklist explicitly forbids
-  `dangerouslySetInnerHTML` without sanitization (DOMPurify).
+  `dangerouslySetInnerHTML` without **DOMPurify** sanitization, plus a
+  `eslint-plugin-react/no-danger` rule that breaks CI if the call appears.
+
+## 8. Security checklist (cross-cutting)
+
+This section consolidates the security controls required by the spec across
+transport, OWASP Top 10, and observability. Items already detailed elsewhere
+(auth in §2/ADR-2, secrets in ADR-4, WAF in ADR-4, threats in §7) are linked
+rather than repeated.
+
+### 8.1 Transport security
+
+| Control | Implementation |
+|---|---|
+| HTTPS-only | ALB listener on :443 with ACM cert; :80 redirects to :443 |
+| HSTS | `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` set on CloudFront and ALB responses |
+| TLS minimum | TLS 1.2; weak ciphers disabled at ALB security policy `ELBSecurityPolicy-TLS13-1-2-2021-06` |
+| CORS whitelist | API allows only the production frontend origin (`https://app.nafad-pay.example`); no `Access-Control-Allow-Origin: *`; preflight cached 10 min |
+| CSP | See Threat 3 mitigation 1 (nonce-based CSP via CloudFront response policy) |
+| Cookies | If sessions are added: `Secure; HttpOnly; SameSite=Strict` |
+
+### 8.2 OWASP Top 10 (2021) coverage
+
+| Risk | Control |
+|---|---|
+| **A01 Broken access control / IDOR** | Row-level filtering: every `GET /transactions` is scoped by `cognito:sub` (or B2B `merchant_id` for partners); no global "give me transaction id N" endpoint exists |
+| **A02 Cryptographic failures** | TLS 1.2+; secrets only in Secrets Manager; passwords (Cognito) hashed with SRP, never stored plaintext |
+| **A03 Injection** | SQLAlchemy 2.0 with **bound parameters** for every query — no f-string SQL anywhere; Pydantic v2 schemas validate every input field |
+| **A04 Insecure design** | Idempotency-Key required on writes (replay-safe); rate limits per user / per API key |
+| **A05 Security misconfiguration** | IaC (Terraform); no manual console changes; CloudFront origin verification header so the ALB refuses traffic that didn't traverse CloudFront |
+| **A06 Vulnerable components** | `pip-audit` and `npm audit` in CI; Renovate bot for weekly dep bumps |
+| **A07 Authentication failures** | Cognito MFA; lockout after 5 failed attempts; password rotation policy |
+| **A08 Software & data integrity** | Container images signed and verified by ECR; CI pinned to commit SHAs |
+| **A09 Logging failures** | Structured JSON logs to CloudWatch (see §8.3); CloudTrail for control-plane |
+| **A10 SSRF** | API has no user-supplied URL fetcher; outbound egress restricted to Secrets Manager + S3 via VPC endpoints |
+| **CSRF** | API is JSON-only and uses bearer tokens (Cognito JWT in `Authorization` header), not cookies, so traditional CSRF doesn't apply. If cookies are ever introduced, double-submit token + `SameSite=Strict` is the design |
+
+### 8.3 Observability
+
+| Signal | Implementation |
+|---|---|
+| **Structured logs** | JSON logs (`{"ts","level","trace_id","span_id","route","status","latency_ms",...}`) shipped to CloudWatch Logs with 30-day retention, archived to S3 for 1 year |
+| **Distributed traces** | AWS X-Ray SDK in FastAPI middleware; trace_id propagated to every log line |
+| **RED metrics** | Custom CloudWatch metrics: `request_count`, `error_count` (5xx), `duration_ms` p50/p95/p99 — published per route |
+| **Alarms** | p99 > 500 ms for 5 min → page on-call; 5xx rate > 1 % for 2 min → page; RDS CPU > 80 % for 10 min → warn; RDS connection count > 80 % of proxy max → warn |
+| **Dashboard** | CloudWatch Dashboard with: traffic (req/s by route), latency p50/p95/p99 stacked, 5xx rate, RDS CPU & connections, queue depth (SQS), Cognito sign-in rate |
+| **Synthetic checks** | CloudWatch Synthetics canary every 1 min: GET /stats, POST /simulate/batch?n=1 |
 
 ---
 
@@ -193,7 +242,28 @@ can be done in any order except where noted.
 | Data transfer | ~50 |
 | **Total** | **~1 160/month** |
 
-### B. References
+### B. Datacenter mapping (fictional → real providers)
+
+The dataset uses fictional datacenter labels. Our target deployment is **AWS**;
+the GCP and Hetzner columns are listed so the choice can be justified on price,
+managed services, and latency.
+
+| Fictional DC | AWS (target) | GCP (comparison) | Hetzner (bare-metal comparison) |
+|---|---|---|---|
+| `DC-NKC-PRIMARY`   | `eu-west-3a` (Paris) | `europe-west9-a` (Paris) | `fsn1` (Falkenstein, DE) |
+| `DC-NKC-SECONDARY` | `eu-west-3b` (Paris) | `europe-west9-b` (Paris) | `nbg1` (Nuremberg, DE) |
+| `DC-NDB`           | `eu-west-3c` (Paris) | `europe-west9-c` (Paris) | `hel1` (Helsinki, FI — distant DR) |
+
+**Why AWS over the alternatives.**
+- vs **GCP**: AWS Cognito + API Gateway + RDS Proxy give us the auth-split and
+  connection-pool stories out of the box; equivalent on GCP is more glue
+  (Identity Platform + Apigee + custom pgBouncer).
+- vs **Hetzner**: ~3× cheaper compute, but no managed RDS Multi-AZ, no managed
+  Cognito, no managed WAF — the operational overhead of running these ourselves
+  exceeds the savings at our scale (5 M tx/month). Hetzner becomes attractive
+  past 50 M tx/month when the saved AWS bill funds a dedicated SRE.
+
+### C. References
 
 - M4's deployed Early Stage architecture: `docs/architecture-early-stage.md`,
   `docs/deployment-notes.md`

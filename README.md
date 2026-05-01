@@ -22,6 +22,10 @@ Then open:
 
 A clean boot takes about a minute (the seed loader copies 100 k rows into Postgres).
 
+## Why React + Vite (not Next.js)
+
+This is a single-page dashboard with no SEO needs and no per-route data-fetching, so **React + Vite (SPA)** keeps things minimal — one `index.html` served by nginx, all rendering in the browser, no Node runtime in production. Next.js would add SSR/edge complexity we don't use; the same UX would cost an always-on Node container in the deployment topology.
+
 ## What this project does
 
 A small but realistic banking-style system. The frontend lets you trigger batch
