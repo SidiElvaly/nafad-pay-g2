@@ -118,7 +118,10 @@ nafad-pay-g2/
 │   └── diagrams/                         PNG exports of C4 diagrams
 │
 ├── scripts/bootstrap.sh       one-time setup helper
-└── .github/workflows/ci.yml   lint + test on push
+└── .github/workflows/
+    ├── ci.yml                 backend tests + frontend build + compose smoke
+    ├── deploy-api.yml         build → ECR → ECS Fargate (OIDC)
+    └── deploy-frontend.yml    Vite build → S3 → CloudFront invalidation (OIDC)
 ```
 
 ## Common commands
@@ -167,6 +170,25 @@ Full explanation in [`docs/idempotency-implementation.md`](docs/idempotency-impl
 - [Early Stage (MVP)](docs/architecture-early-stage.md) — single-AZ, ~$50/month, 50 QPS ceiling.
 - [At Scale](docs/architecture-at-scale.md) — multi-AZ, WAF, Cognito, RDS Proxy, 500 QPS target.
 - [Investigation answers](docs/investigation-answers.md) — concurrency, clock skew, idempotency, eventual consistency.
+
+## Deployment
+
+CI (`.github/workflows/ci.yml`) runs on every push: backend tests, frontend
+build, full compose smoke. CD (manual or `paths`-triggered) deploys to AWS via
+two workflows that assume an OIDC role — no long-lived AWS keys in GitHub.
+
+- [`.github/workflows/deploy-api.yml`](.github/workflows/deploy-api.yml) —
+  builds the API Docker image, pushes to ECR, updates the ECS Fargate task
+  definition, and waits for service stability.
+- [`.github/workflows/deploy-frontend.yml`](.github/workflows/deploy-frontend.yml) —
+  runs `npm run build`, syncs `dist/` to the S3 bucket with proper cache
+  headers (immutable hashed assets, no-cache `index.html`), and invalidates
+  CloudFront.
+
+Required GitHub variables and secrets are listed in
+[`docs/deployment-notes.md`](docs/deployment-notes.md). The first run requires
+the AWS resources (VPC, ECR repo, ECS cluster + service, S3 bucket, CloudFront
+distribution, OIDC role) to already exist in the target account.
 
 ## License & credits
 
