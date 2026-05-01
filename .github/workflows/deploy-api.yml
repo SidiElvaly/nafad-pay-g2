@@ -63,6 +63,25 @@ jobs:
           container-name: ${{ vars.ECS_CONTAINER_NAME }}
           image: ${{ steps.build.outputs.image }}
 
+      - name: Ensure service desiredCount >= 1
+        # CloudFormation provisions the service with DesiredCount: 0 so it
+        # doesn't try to run the placeholder image. The first deploy bumps
+        # it; subsequent deploys are a no-op for this step.
+        run: |
+          CURRENT=$(aws ecs describe-services \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --services "${{ vars.ECS_SERVICE }}" \
+            --query 'services[0].desiredCount' --output text)
+          if [ "$CURRENT" -lt 1 ]; then
+            echo "Bumping desiredCount from $CURRENT to 1"
+            aws ecs update-service \
+              --cluster "${{ vars.ECS_CLUSTER }}" \
+              --service "${{ vars.ECS_SERVICE }}" \
+              --desired-count 1 > /dev/null
+          else
+            echo "desiredCount already $CURRENT — leaving it"
+          fi
+
       - name: Deploy to ECS service
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:

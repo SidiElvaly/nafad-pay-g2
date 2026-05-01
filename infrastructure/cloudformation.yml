@@ -1,0 +1,683 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NAFAD-PAY G2 — Early Stage AWS infrastructure (single AZ-pair, ~$50/month).
+  Creates VPC, ALB, ECS Fargate cluster, ECR, RDS PostgreSQL, Secrets Manager,
+  S3 + CloudFront, IAM roles, GitHub OIDC role for the deploy workflows.
+  After the stack is up: push the API image to ECR, then run
+  `.github/workflows/deploy-api.yml` to roll the real container.
+
+# ----------------------------------------------------------------------------
+# Parameters
+# ----------------------------------------------------------------------------
+Parameters:
+  ProjectName:
+    Type: String
+    Default: nafad-pay-g2
+    AllowedPattern: '^[a-z0-9-]+$'
+    Description: Lowercase project name; used as a prefix for resource names.
+
+  GitHubOrg:
+    Type: String
+    Default: SidiElvaly
+    Description: GitHub user or organization that owns the repo.
+
+  GitHubRepo:
+    Type: String
+    Default: nafad-pay-g2
+    Description: GitHub repository name.
+
+  DBUsername:
+    Type: String
+    Default: nafad
+    NoEcho: true
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: Master password for the RDS PostgreSQL instance.
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t4g.small, db.t3.micro, db.t3.small]
+
+  ContainerCpu:
+    Type: String
+    Default: '256'
+    AllowedValues: ['256', '512', '1024']
+    Description: Fargate task CPU units (256 = 0.25 vCPU).
+
+  ContainerMemory:
+    Type: String
+    Default: '512'
+    AllowedValues: ['512', '1024', '2048']
+    Description: Fargate task memory in MB.
+
+  CreateOIDCProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Create the GitHub Actions OIDC provider. Set to 'false' if you already
+      have one in this account (it is account-wide and cannot exist twice).
+
+# ----------------------------------------------------------------------------
+# Conditions
+# ----------------------------------------------------------------------------
+Conditions:
+  ShouldCreateOIDC: !Equals [!Ref CreateOIDCProvider, 'true']
+
+# ----------------------------------------------------------------------------
+# Mappings
+# ----------------------------------------------------------------------------
+Mappings:
+  # CloudFront's prefix list ID for the managed-cache "AllViewerExceptHostHeader"
+  # is region-independent; we hard-code the well-known managed cache policy IDs.
+  CloudFrontPolicies:
+    Default:
+      CachePolicyOptimized: '658327ea-f89d-4fab-a63d-7e88639e58f6'   # CachingOptimized
+      CachePolicyDisabled:  '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'   # CachingDisabled
+      OriginRequestAllViewerExceptHostHeader: 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
+
+# ----------------------------------------------------------------------------
+# Resources
+# ----------------------------------------------------------------------------
+Resources:
+
+  # =========================================================================
+  # Networking — single VPC, 2 public subnets across 2 AZs (ALB requirement)
+  # =========================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-vpc" }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-igw" }]
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-a" }]
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-b" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-rt" }]
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # =========================================================================
+  # Security groups — ALB → ECS → RDS chain
+  # =========================================================================
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${ProjectName} ALB"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP from anywhere (frontend reaches the ALB through CloudFront)
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-alb-sg" }]
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${ProjectName} ECS tasks"
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-ecs-sg" }]
+
+  ECSIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ECSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: API port, only from the ALB
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${ProjectName} RDS"
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rds-sg" }]
+
+  RDSIngressFromECS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RDSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Description: Postgres, only from ECS tasks
+
+  # =========================================================================
+  # ECR — application image registry
+  # =========================================================================
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: nafad-api
+      ImageScanningConfiguration: { ScanOnPush: true }
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  # =========================================================================
+  # CloudWatch Logs
+  # =========================================================================
+  APILogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-api"
+      RetentionInDays: 30
+
+  # =========================================================================
+  # Secrets Manager — DB credentials
+  # =========================================================================
+  # The DATABASE_URL is constructed from the RDS endpoint after DBInstance is
+  # created. Stored as JSON so ECS can extract the single key as an env var.
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    DependsOn: DBInstance
+    Properties:
+      Name: !Sub "${ProjectName}-db-credentials"
+      Description: PostgreSQL connection string for the API
+      SecretString: !Sub
+        - '{"DATABASE_URL":"postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBHost}:5432/nafadpay"}'
+        - DBHost: !GetAtt DBInstance.Endpoint.Address
+
+  # =========================================================================
+  # RDS PostgreSQL — single AZ db.t4g.micro
+  # =========================================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "${ProjectName} subnets for RDS"
+      SubnetIds: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-db"
+      DBName: nafadpay
+      Engine: postgres
+      EngineVersion: '16.6'
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups: [!Ref RDSSecurityGroup]
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      AutoMinorVersionUpgrade: true
+
+  # =========================================================================
+  # IAM — task roles + GitHub Actions OIDC role
+  # =========================================================================
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ecs-task-execution"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadAPISecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DBSecret
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ecs-task"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApplicationPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DBSecret
+
+  # GitHub OIDC provider — account-wide singleton, optional creation
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOIDC
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-github-actions"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+      Policies:
+        - PolicyName: ECRPushPull
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                  - ecr:BatchGetImage
+                  - ecr:DescribeImages
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !GetAtt ECRRepository.Arn
+        - PolicyName: ECSDeploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt ECSTaskExecutionRole.Arn
+                  - !GetAtt ECSTaskRole.Arn
+        - PolicyName: FrontendDeploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${FrontendBucket}"
+                  - !Sub "arn:aws:s3:::${FrontendBucket}/*"
+              - Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # =========================================================================
+  # ALB
+  # =========================================================================
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-alb"
+      Scheme: internet-facing
+      Type: application
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref ALBSecurityGroup]
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-tg"
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: 8000
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200-499  # lenient during bootstrap; real API returns 200 on /health
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: '30' }
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # =========================================================================
+  # ECS — cluster + placeholder task def + service (DesiredCount: 0 initially)
+  # =========================================================================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ProjectName
+      ClusterSettings:
+        - { Name: containerInsights, Value: enabled }
+
+  PlaceholderTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: nafad-api
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          # Placeholder — the deploy workflow replaces this with the real
+          # ECR image. Public ECR nginx so the task can start before first deploy.
+          Image: public.ecr.aws/nginx/nginx:1.27-alpine
+          Essential: true
+          PortMappings:
+            - { ContainerPort: 8000, Protocol: tcp }
+          Environment:
+            - { Name: ALLOWED_ORIGINS, Value: !Sub "https://${CloudFrontDistribution.DomainName}" }
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Sub "${DBSecret}:DATABASE_URL::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref APILogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: api
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 0   # bumped to 1 by first deploy; see deploy-api.yml
+      TaskDefinition: !Ref PlaceholderTaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED   # public subnets, so tasks can reach ECR/Secrets
+          Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+          SecurityGroups: [!Ref ECSSecurityGroup]
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # =========================================================================
+  # Frontend — S3 (private) + CloudFront with /api/* routed to ALB
+  # =========================================================================
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-frontend-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${ProjectName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # CloudFront viewer-request function: strip the leading /api before
+  # forwarding to the ALB origin. Lets the API stay path-agnostic.
+  ApiPathRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-strip-api-prefix"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Strip leading /api/ before forwarding to the ALB
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          if (request.uri === '/api') {
+            request.uri = '/';
+          } else if (request.uri.startsWith('/api/')) {
+            request.uri = request.uri.substring(4);
+          }
+          return request;
+        }
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: s3-frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig: { OriginAccessIdentity: '' }
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+          - Id: alb-api
+            DomainName: !GetAtt ALB.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: s3-frontend
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: !FindInMap [CloudFrontPolicies, Default, CachePolicyOptimized]
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: alb-api
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: !FindInMap [CloudFrontPolicies, Default, CachePolicyDisabled]
+            OriginRequestPolicyId: !FindInMap [CloudFrontPolicies, Default, OriginRequestAllViewerExceptHostHeader]
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiPathRewriteFunction.FunctionMetadata.FunctionARN
+        CustomErrorResponses:
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html }
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+# ----------------------------------------------------------------------------
+# Outputs — copy these into GitHub repo Settings → Variables and Secrets
+# ----------------------------------------------------------------------------
+Outputs:
+  GitHubActionsRoleArn:
+    Description: 'GitHub secret: AWS_ROLE_ARN'
+    Value: !GetAtt GitHubActionsRole.Arn
+
+  Region:
+    Description: 'GitHub variable: AWS_REGION'
+    Value: !Ref AWS::Region
+
+  ECRRepositoryName:
+    Description: 'GitHub variable: ECR_REPOSITORY'
+    Value: !Ref ECRRepository
+
+  ECRRepositoryUri:
+    Description: Push the API image to this URI
+    Value: !GetAtt ECRRepository.RepositoryUri
+
+  ECSClusterName:
+    Description: 'GitHub variable: ECS_CLUSTER'
+    Value: !Ref ECSCluster
+
+  ECSServiceName:
+    Description: 'GitHub variable: ECS_SERVICE'
+    Value: !GetAtt ECSService.Name
+
+  ECSTaskDefinitionFamily:
+    Description: 'GitHub variable: ECS_TASK_DEFINITION_FAMILY'
+    Value: nafad-api
+
+  ECSContainerName:
+    Description: 'GitHub variable: ECS_CONTAINER_NAME'
+    Value: api
+
+  FrontendBucketName:
+    Description: 'GitHub variable: FRONTEND_S3_BUCKET'
+    Value: !Ref FrontendBucket
+
+  CloudFrontDistributionId:
+    Description: 'GitHub secret: CLOUDFRONT_DISTRIBUTION_ID'
+    Value: !Ref CloudFrontDistribution
+
+  CloudFrontDomain:
+    Description: Live frontend URL
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  ViteApiUrl:
+    Description: 'GitHub variable: VITE_API_URL (frontend talks to /api on its own origin)'
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api"
+
+  ApiPublicUrl:
+    Description: 'GitHub variable: API_PUBLIC_URL (used for post-deploy smoke test)'
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api"
+
+  ALBDNSName:
+    Description: Direct ALB DNS (for debugging, bypasses CloudFront)
+    Value: !Sub "http://${ALB.DNSName}"
+
+  DBSecretArn:
+    Description: Secrets Manager ARN holding the DB credentials
+    Value: !Ref DBSecret
+
+  DBEndpoint:
+    Description: RDS endpoint (private, only ECS can reach it)
+    Value: !GetAtt DBInstance.Endpoint.Address
