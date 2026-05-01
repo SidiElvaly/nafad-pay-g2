@@ -1,8 +1,5 @@
 # Idempotency Implementation — Reference Note
 
-**Owner:** M1 — fill in by Day 2 evening so M5 can cite it in the architecture
-documents and the consolidated investigation answers.
-
 > This document is the single source of truth for *how* idempotency is
 > implemented in NAFAD-PAY G2's backend. Other documents
 > (`architecture-at-scale.md`, `investigation-answers.md`) reference this file

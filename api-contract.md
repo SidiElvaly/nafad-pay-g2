@@ -1,10 +1,10 @@
 # API Contract — NAFAD-PAY G2
 
-**Owners:** M1 (backend) + M2 (frontend). **Lock this on Day 1.**
 **Status:** v1.0 · final.
 
-This is the single source of truth for the JSON shape of all 4 endpoints. M1
-implements exactly this. M2 calls exactly this. Any drift breaks the integration.
+This is the single source of truth for the JSON shape of all 4 endpoints. The
+backend implements exactly this. The frontend calls exactly this. Any drift
+breaks the integration.
 
 ## Conventions
 

@@ -1,14 +1,11 @@
 # Investigation Answers — Distributed Systems
 
-**Owners:** M4 (sections 1, 2) · M5 (sections 3, 4 + final consolidation) ·
-M1 contributes the idempotency draft.
-
 > Four questions from the master document covering the canonical
 > distributed-systems pain points the synthetic dataset intentionally exposes.
 
 ---
 
-## 1. Concurrency · *Owner: M4*
+## 1. Concurrency
 
 > **Question**: How does the API handle 10 simultaneous `POST /transactions`
 > from the same source user?
@@ -18,7 +15,7 @@ M1 contributes the idempotency draft.
 **Pessimistic locking with `SELECT ... FOR UPDATE`.** At the start of the
 transaction, the API locks the user's account row. Other concurrent requests
 for the same user wait until the lock is released. Simple, correct, used in
-M1's implementation.
+the API's implementation.
 
 ```sql
 BEGIN;
@@ -33,7 +30,7 @@ Read it, do your logic, then `UPDATE ... WHERE version = $X`. If 0 rows are
 updated (someone else won), retry from the top.
 
 **Connection-pool sizing.** Independent of locking. SQLAlchemy's default async
-pool is 5 + overflow 10. M1's configuration uses `pool_size=20, max_overflow=10`
+pool is 5 + overflow 10. The backend uses `pool_size=20, max_overflow=10`
 to handle bursts without queueing requests at the asyncpg layer.
 
 ### Recommendation for NAFAD-PAY
@@ -41,17 +38,17 @@ to handle bursts without queueing requests at the asyncpg layer.
 **Pessimistic locking** for money operations — correctness over throughput is
 the right trade-off for financial transactions. Contention per user account is
 naturally low (a single user rarely makes more than 1 tx/second), so the
-bottleneck is theoretical. M1's implementation enforces this via the
+bottleneck is theoretical. The implementation enforces this via the
 `idempotency_keys` PRIMARY KEY constraint, which serializes concurrent retries
 of the same logical operation; account-level row locks would be added for the
 production version where balances are tracked.
 
 See `docs/idempotency-implementation.md` for the relationship between
-idempotency and concurrency in M1's code.
+idempotency and concurrency in the backend code.
 
 ---
 
-## 2. Clock skew · *Owner: M4*
+## 2. Clock skew
 
 > **Question**: 2 575 rows in the broader dataset have `completed_at <
 > created_at`. Why? How do we fix it?
@@ -82,7 +79,7 @@ under load. Necessary but insufficient for ordering guarantees.
 pair that gives causal ordering even when physical clocks disagree. Used by
 CockroachDB and Spanner. Overkill for NAFAD-PAY's centralized PostgreSQL.
 
-### What M1's API actually does
+### What the API actually does
 
 The `Transaction` model declares `created_at: Mapped[datetime] =
 mapped_column(server_default=func.now())`. Client-supplied timestamps are
@@ -90,7 +87,7 @@ ignored. This makes Fix 1 the operational reality.
 
 ---
 
-## 3. Idempotency · *Owner: M5 (with M1's draft)*
+## 3. Idempotency
 
 > **Question**: Why is idempotency critical for `POST /transactions`? How is
 > it implemented? What happens with concurrent requests using the same key?
@@ -103,7 +100,7 @@ debits the user twice. **Real money lost.** The `Idempotency-Key` header (a
 client-generated UUID per logical operation) lets the server recognize retries
 and return the original response without reprocessing.
 
-### M1's implementation
+### Implementation
 
 See `docs/idempotency-implementation.md` for the full algorithm. Summary:
 
@@ -140,7 +137,7 @@ in the API contract so clients know the replay window.
 
 ---
 
-## 4. Eventual consistency · *Owner: M5*
+## 4. Eventual consistency
 
 > **Question**: At Scale, when read replicas are added, a `GET /transactions`
 > issued 50 ms after a `POST` may not see the new row. How do we handle it?
@@ -175,7 +172,7 @@ Strategy 1 for the user-facing API (`POST /transactions` followed by
 dashboard polling. Strategy 2 reserved for a future `GET /transactions/recent`
 endpoint serving the user's account view.
 
-This is a hypothetical extension — M1's current implementation talks to a
+This is a hypothetical extension — the current implementation talks to a
 single PostgreSQL instance, so eventual-consistency issues do not yet apply.
 The mitigation is documented here as part of the migration plan in
 `architecture-at-scale.md`.
@@ -184,8 +181,8 @@ The mitigation is documented here as part of the migration plan in
 
 ## References
 
-- M1's implementation note: `docs/idempotency-implementation.md`
-- M4's Early Stage architecture: `docs/architecture-early-stage.md`
-- M5's At Scale architecture: `docs/architecture-at-scale.md`
-- M3's EDA findings: `eda/analysis.md`
+- Idempotency implementation note: `docs/idempotency-implementation.md`
+- Early Stage architecture: `docs/architecture-early-stage.md`
+- At Scale architecture: `docs/architecture-at-scale.md`
+- EDA findings: `eda/analysis.md`
 - Master document: `PROJET_NAFAD_PAY.html` sections 2.2, 3.3

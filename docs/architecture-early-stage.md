@@ -1,7 +1,5 @@
 # Architecture — Early Stage (MVP)
 
-**Owner:** M4 · **Status:** TEMPLATE — fill in each section.
-
 > This document follows the mandatory 7-section template from
 > `PROJET_NAFAD_PAY.html` section 3.1. Section 6 (Migration plan) is omitted —
 > it appears only in `architecture-at-scale.md`.
@@ -131,7 +129,7 @@ idempotency check and returns the cached response — no duplicate row.
 
 ### B. References
 
-- M1's idempotency implementation: `docs/idempotency-implementation.md`
-- M3's EDA numbers: `eda/numbers-cheatsheet.md`
-- M4's actual deployment ARNs: `docs/deployment-notes.md`
+- Idempotency implementation: `docs/idempotency-implementation.md`
+- EDA numbers: `eda/numbers-cheatsheet.md`
+- Deployment ARNs: `docs/deployment-notes.md`
 - Master document: `PROJET_NAFAD_PAY.html` sections 3.1, 3.2

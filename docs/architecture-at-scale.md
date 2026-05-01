@@ -1,7 +1,5 @@
 # Architecture — At Scale
 
-**Owner:** M5 · **Status:** TEMPLATE — fill in each section.
-
 > This document follows the mandatory 7-section template from
 > `PROJET_NAFAD_PAY.html` section 3.1 plus mandatory section 6 (Migration plan).
 
@@ -130,7 +128,7 @@ wire protocol, sub-second replica lag), then horizontal sharding by `wilaya_id`.
 
 ## 6. Migration plan (from Early Stage)
 
-Starting from M4's deployed Early Stage end-state. Each step is independent and
+Starting from the deployed Early Stage end-state. Each step is independent and
 can be done in any order except where noted.
 
 | # | Step | Downtime | Effort | Notes |
@@ -265,8 +263,8 @@ managed services, and latency.
 
 ### C. References
 
-- M4's deployed Early Stage architecture: `docs/architecture-early-stage.md`,
+- Deployed Early Stage architecture: `docs/architecture-early-stage.md`,
   `docs/deployment-notes.md`
-- M1's idempotency implementation: `docs/idempotency-implementation.md`
-- M3's EDA numbers: `eda/numbers-cheatsheet.md`
+- Idempotency implementation: `docs/idempotency-implementation.md`
+- EDA numbers: `eda/numbers-cheatsheet.md`
 - Master document: `PROJET_NAFAD_PAY.html` sections 3.1, 3.2

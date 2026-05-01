@@ -18,7 +18,7 @@ seeded data. Figures live in `figures/`.
 | Total timeouts | 404 (0.40 % overall) |
 | Timeouts by datacenter | NKC: 404 (100 %) · NDB: 0 |
 
-These four numbers are what M4 and M5 quote in the architecture documents'
+These four numbers are what the architecture documents quote in their
 "Context & constraints" sections.
 
 ---
@@ -74,8 +74,8 @@ hours (07:00–11:00), and a secondary peak in the late afternoon (15:00–19:00
 
 **Implication for architecture.** Auto-scaling triggers in the At Scale doc should be
 based on a 10-minute moving average, not instantaneous queue depth, to avoid flapping on
-the bursts. The maintenance window for the Multi-AZ failover step (M5's migration plan)
-goes in the 02:00–04:00 dead zone.
+the bursts. The maintenance window for the Multi-AZ failover step (in the
+At Scale migration plan) goes in the 02:00–04:00 dead zone.
 
 ---
 
@@ -188,7 +188,7 @@ behaviour is wrong.
 
 ## Summary for the architecture documents
 
-The numbers M4 and M5 should quote in their `Context` sections:
+The numbers the architecture documents should quote in their `Context` sections:
 
 ```
 Observed at the implementation layer (G2):

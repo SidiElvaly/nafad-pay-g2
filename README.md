@@ -61,13 +61,13 @@ heavily-tested behaviour in the codebase.
 
 ```
 nafad-pay-g2/
-├── docker-compose.yml         M3 — wires the 3 services together
+├── docker-compose.yml         wires the 3 services together
 ├── Makefile                   common commands (up, test, smoke)
 ├── README.md                  this file
 ├── .env.example               environment template
-├── api-contract.md            M1 + M2 — locked JSON contract (Day 1)
+├── api-contract.md            locked JSON contract for the 4 endpoints
 │
-├── api/                       M1 — FastAPI backend
+├── api/                       FastAPI backend
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── app/
@@ -76,13 +76,13 @@ nafad-pay-g2/
 │   │   ├── models.py          SQLAlchemy ORM
 │   │   ├── schemas.py         Pydantic v2 schemas
 │   │   ├── db.py              async engine + session factory
-│   │   └── simulator.py       M3 — synthetic generator
+│   │   └── simulator.py       synthetic generator
 │   └── tests/
 │       ├── test_idempotency.py    100-parallel + replay + 422
 │       ├── test_pagination.py
 │       └── test_endpoints.py
 │
-├── frontend/                  M2 — React + Vite + Tailwind SPA
+├── frontend/                  React + Vite + Tailwind SPA
 │   ├── Dockerfile
 │   ├── package.json
 │   └── src/
@@ -101,22 +101,23 @@ nafad-pay-g2/
 │   ├── reference_tx_types.csv           8 transaction types
 │   └── reference_categories.csv         merchant categories
 │
-├── sql/01_init.sql            M3 — DDL + indexes + COPY FROM csv
+├── sql/01_init.sql            DDL + indexes + COPY FROM csv
 │
-├── eda/                       M3 — exploratory analysis
-│   ├── analysis.md            answers to the 5 README questions
-│   └── figures/*.png          5 PNG charts
+├── eda/                       exploratory analysis
+│   ├── analysis.ipynb         Jupyter notebook reproducing all figures
+│   ├── analysis.md            written report answering the 5 questions
+│   ├── requirements.txt       notebook deps
+│   └── figures/*.png          rendered charts
 │
-├── docs/                      M4 + M5 — architecture documents
-│   ├── architecture-early-stage.md       MVP single-AZ on AWS (M4)
-│   ├── architecture-at-scale.md          > 500 QPS, multi-AZ (M5)
+├── docs/                      architecture documents
+│   ├── architecture-early-stage.md       MVP single-AZ on AWS
+│   ├── architecture-at-scale.md          > 500 QPS, multi-AZ
 │   ├── investigation-answers.md          4 distributed-systems answers
-│   ├── idempotency-implementation.md     M1's reference note
-│   ├── deployment-notes.md               M4's actual AWS ARNs (Day 2)
+│   ├── idempotency-implementation.md     reference note
+│   ├── deployment-notes.md               actual AWS ARNs
 │   └── diagrams/                         PNG exports of C4 diagrams
 │
 ├── scripts/bootstrap.sh       one-time setup helper
-├── CONTRIBUTING.md            team conventions
 └── .github/workflows/ci.yml   lint + test on push
 ```
 

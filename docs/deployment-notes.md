@@ -1,10 +1,8 @@
 # AWS Deployment Notes
 
-**Owner:** M4 — fill in by Day 2 evening after the sandbox deployment is live.
-
 > This document captures the *actual* AWS resources deployed in the eu-west-3
-> sandbox so M5 can reference them in the At Scale migration plan and the
-> Early Stage doc can show real ARNs.
+> sandbox, so the At Scale migration plan can reference them and the Early
+> Stage doc can show real ARNs.
 
 ---
 
