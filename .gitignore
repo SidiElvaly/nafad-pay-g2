@@ -1,0 +1,39 @@
+# Env
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Build
+*.pyc
+build/
+
+# Large seed data (24 MB — download from course materials)
+data/historical_transactions.csv
+
+# Claude Code per-user settings (allowlist, etc.)
+.claude/settings.local.json
