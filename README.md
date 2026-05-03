@@ -26,10 +26,7 @@
     <td><strong>Dashboard</strong></td>
     <td><a href="https://dlblyfqhsm6re.cloudfront.net">https://dlblyfqhsm6re.cloudfront.net</a></td>
   </tr>
-  <tr>
-    <td><strong>API root</strong></td>
-    <td><a href="https://dlblyfqhsm6re.cloudfront.net/api">https://dlblyfqhsm6re.cloudfront.net/api</a></td>
-  </tr>
+ 
   <tr>
     <td><strong>Swagger UI</strong></td>
     <td><a href="https://dlblyfqhsm6re.cloudfront.net/api/docs">https://dlblyfqhsm6re.cloudfront.net/api/docs</a></td>
