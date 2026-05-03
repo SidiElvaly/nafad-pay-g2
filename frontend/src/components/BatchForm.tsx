@@ -29,7 +29,7 @@ export function BatchForm({ onSuccess, onError }: Props) {
   return (
     <form
       onSubmit={submit}
-      className="bg-white rounded-2xl ring-1 ring-slate-200 p-6 shadow-card mb-6"
+      className="bg-white rounded-2xl ring-1 ring-slate-200 p-4 sm:p-6 shadow-card mb-5 sm:mb-6"
     >
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>

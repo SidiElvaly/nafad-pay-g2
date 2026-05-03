@@ -27,7 +27,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center p-4 animate-fade-in"
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-3 sm:p-4 animate-fade-in"
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
@@ -35,12 +35,12 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className={`relative bg-white rounded-2xl shadow-card-hover ring-1 ring-slate-200 w-full ${maxWidth} max-h-[90vh] flex flex-col overflow-hidden`}
+        className={`relative bg-white rounded-2xl shadow-card-hover ring-1 ring-slate-200 w-full ${maxWidth} max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden`}
       >
-        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-slate-100">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">{title}</h3>
-            {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100">
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate">{title}</h3>
+            {subtitle && <p className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
           <button
             type="button"

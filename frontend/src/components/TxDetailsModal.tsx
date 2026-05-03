@@ -22,7 +22,7 @@ export function TxDetailsModal({ tx, onClose }: Props) {
       maxWidth="max-w-2xl"
     >
       {tx && (
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-5">
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={tx.status} />
             {tx.is_timeout && (

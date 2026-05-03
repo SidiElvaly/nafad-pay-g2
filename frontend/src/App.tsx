@@ -13,24 +13,24 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/70 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-card flex items-center justify-center">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-card flex items-center justify-center flex-shrink-0">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white">
                 <path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-900 leading-tight">
-                NAFAD-PAY <span className="text-slate-400 font-medium">· Simulator</span>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
+                NAFAD-PAY <span className="text-slate-400 font-medium hidden sm:inline">· Simulator</span>
               </h1>
-              <p className="text-xs text-slate-500 leading-tight">
-                Group 2 · MRU mobile-money platform
+              <p className="text-[11px] sm:text-xs text-slate-500 leading-tight truncate">
+                Group 2 · MRU mobile-money
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <span className="hidden sm:inline-flex items-center gap-2 text-xs font-medium text-slate-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
               <span className="relative flex w-2 h-2">
                 <span className="absolute inset-0 rounded-full bg-emerald-400 animate-pulse-dot" />
@@ -41,7 +41,8 @@ export default function App() {
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 text-white text-sm font-semibold px-3.5 py-2 shadow-card hover:shadow-card-hover transition"
+              aria-label="New transaction"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 text-white text-sm font-semibold px-3 sm:px-3.5 py-2 shadow-card hover:shadow-card-hover transition"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                 <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
@@ -65,7 +66,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 animate-fade-in">
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-8 animate-fade-in">
         <StatsBanner />
         <BatchForm
           onSuccess={(msg) => setToast({ kind: 'success', msg })}

@@ -101,8 +101,8 @@ export function CreateTxModal({ open, onClose, onSuccess, onError }: Props) {
       subtitle="Calls POST /transactions with a fresh Idempotency-Key."
       maxWidth="max-w-2xl"
     >
-      <form onSubmit={submit} className="px-6 py-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <form onSubmit={submit} className="px-4 sm:px-6 py-4 sm:py-5 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <Field label="Transaction type" htmlFor="tx-type">
             <select
               id="tx-type"

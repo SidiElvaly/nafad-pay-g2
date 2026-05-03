@@ -44,7 +44,7 @@ export function StatsBanner() {
     stats && stats.success_rate > 0.5 ? 'success' : 'danger';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-8">
       <Card
         label="Total transactions"
         value={stats ? formatNumber(stats.total_count) : '…'}
@@ -97,16 +97,16 @@ function Card({
 }) {
   const { ring, text, bg } = ACCENTS[accent];
   return (
-    <div className={`group bg-white rounded-2xl ring-1 ${ring} p-5 shadow-card hover:shadow-card-hover transition-all duration-200 hover:-translate-y-0.5`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+    <div className={`group bg-white rounded-2xl ring-1 ${ring} p-3 sm:p-5 shadow-card hover:shadow-card-hover transition-all duration-200 hover:-translate-y-0.5`}>
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-slate-500 font-semibold leading-tight">
           {label}
         </div>
-        <div className={`${bg} ${text} w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110`}>
+        <div className={`${bg} ${text} w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 flex-shrink-0`}>
           {icon}
         </div>
       </div>
-      <div className={`mt-3 text-3xl font-bold tabular-nums ${text}`}>{value}</div>
+      <div className={`mt-2 sm:mt-3 text-xl sm:text-3xl font-bold tabular-nums ${text}`}>{value}</div>
       {subLabel && (
         <div className="mt-1 text-[11px] text-slate-400 uppercase tracking-wider font-medium">
           {subLabel}
