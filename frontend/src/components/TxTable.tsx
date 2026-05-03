@@ -63,18 +63,25 @@ function ViewButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+const PAGE_SIZES = [25, 50, 100] as const;
+
 export function TxTable() {
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Transaction | null>(null);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [page, setPage] = useState(0);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const offset = page * pageSize;
 
   useEffect(() => {
     let alive = true;
     const fetchTxs = async () => {
       try {
-        const r = await api.listTransactions(50);
+        const r = await api.listTransactions(pageSize, offset);
         if (alive) {
           setTxs(r.items);
           setTotal(r.total);
@@ -94,7 +101,21 @@ export function TxTable() {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [page, pageSize, offset]);
+
+  // If `total` shrinks (or pageSize grows) such that the current page no
+  // longer exists, snap back to the last valid page.
+  useEffect(() => {
+    if (page > 0 && page >= totalPages) setPage(totalPages - 1);
+  }, [page, totalPages]);
+
+  const goPrev = () => setPage((p) => Math.max(0, p - 1));
+  const goNext = () => setPage((p) => Math.min(totalPages - 1, p + 1));
+  const goFirst = () => setPage(0);
+  const goLast = () => setPage(totalPages - 1);
+
+  const rangeStart = total === 0 ? 0 : offset + 1;
+  const rangeEnd = Math.min(offset + txs.length, total);
 
   return (
     <div className="bg-white rounded-2xl ring-1 ring-slate-200 shadow-card overflow-hidden">
@@ -110,10 +131,11 @@ export function TxTable() {
           </span>
         </div>
         <span className="text-xs sm:text-sm text-slate-500 tabular-nums">
-          showing <span className="font-semibold text-slate-700">{txs.length}</span> of{' '}
-          <span className="font-semibold text-slate-700">
-            {new Intl.NumberFormat('en-US').format(total)}
-          </span>
+          <span className="font-semibold text-slate-700">{rangeStart.toLocaleString()}</span>
+          –
+          <span className="font-semibold text-slate-700">{rangeEnd.toLocaleString()}</span>
+          {' '}of{' '}
+          <span className="font-semibold text-slate-700">{total.toLocaleString()}</span>
         </span>
       </div>
 
@@ -234,7 +256,77 @@ export function TxTable() {
         </>
       )}
 
+      {/* ---------- PAGINATION FOOTER ---------- */}
+      {!loading && total > 0 && (
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500">
+            <span className="hidden sm:inline">Rows per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}
+              className="rounded-lg border border-slate-300 px-2 py-1 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1 text-xs sm:text-sm text-slate-600 tabular-nums">
+            <PageBtn onClick={goFirst} disabled={page === 0} aria="First page">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M15.79 14.77a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L11.832 10l3.938 3.71a.75.75 0 01.02 1.06zm-6 0a.75.75 0 01-1.06.02l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 111.04 1.08L5.832 10l3.938 3.71a.75.75 0 01.02 1.06z" clipRule="evenodd" />
+              </svg>
+            </PageBtn>
+            <PageBtn onClick={goPrev} disabled={page === 0} aria="Previous page">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+              </svg>
+            </PageBtn>
+            <span className="px-2 sm:px-3 select-none">
+              Page <span className="font-semibold text-slate-800">{page + 1}</span>
+              <span className="text-slate-400"> / </span>
+              <span className="font-semibold text-slate-800">{totalPages.toLocaleString()}</span>
+            </span>
+            <PageBtn onClick={goNext} disabled={page >= totalPages - 1} aria="Next page">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+              </svg>
+            </PageBtn>
+            <PageBtn onClick={goLast} disabled={page >= totalPages - 1} aria="Last page">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M4.21 5.23a.75.75 0 011.06-.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L8.168 10 4.23 6.29a.75.75 0 01-.02-1.06zm6 0a.75.75 0 011.06-.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L14.168 10l-3.938-3.71a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
+              </svg>
+            </PageBtn>
+          </div>
+        </div>
+      )}
+
       <TxDetailsModal tx={selected} onClose={() => setSelected(null)} />
     </div>
+  );
+}
+
+function PageBtn({
+  children,
+  onClick,
+  disabled,
+  aria,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  aria: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={aria}
+      className="inline-flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-slate-600 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-600 disabled:cursor-not-allowed transition"
+    >
+      {children}
+    </button>
   );
 }
