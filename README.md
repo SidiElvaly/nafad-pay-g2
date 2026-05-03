@@ -1,25 +1,72 @@
-# NAFAD-PAY — Group 2 (Platform & API)
+<h1 align="center">NAFAD-PAY G2</h1>
 
-> SupNum NAFAD-PAY project — fictional Mauritanian mobile-payment system.
-> Group 2 owns the public-facing layer: a **FastAPI** backend, a **React + Vite**
-> frontend, a **PostgreSQL** database seeded with 100 000 historical
-> transactions, and two **AWS** architecture documents (Early Stage MVP +
-> At Scale target).
+<p align="center">
+  <strong>A Mauritanian mobile-payment simulator</strong><br/>
+  FastAPI backend with SHA256-based idempotency, React + Vite dashboard,
+  PostgreSQL seeded with 100 000 historical transactions,<br/>
+  one-command local boot, and a full AWS deployment behind CloudFront.
+</p>
 
-## Live deployment
+<p align="center">
+  <a href="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/ci.yml"><img src="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/deploy-api.yml"><img src="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/deploy-api.yml/badge.svg" alt="Deploy API"></a>
+  <a href="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/deploy-frontend.yml"><img src="https://github.com/SidiElvaly/nafad-pay-g2/actions/workflows/deploy-frontend.yml/badge.svg" alt="Deploy frontend"></a>
+  <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/react-18-61dafb" alt="React 18">
+  <img src="https://img.shields.io/badge/postgres-16-336791" alt="Postgres 16">
+  <img src="https://img.shields.io/badge/AWS-eu--west--3-FF9900" alt="AWS eu-west-3">
+</p>
 
-| Surface | URL |
-|---|---|
-| Frontend dashboard | **<https://dlblyfqhsm6re.cloudfront.net>** |
-| API root | <https://dlblyfqhsm6re.cloudfront.net/api> |
-| Swagger UI | <https://dlblyfqhsm6re.cloudfront.net/api/docs> |
-| Stats endpoint | <https://dlblyfqhsm6re.cloudfront.net/api/stats> |
+---
 
-Deployed on AWS `eu-west-3` (Paris) by the [CloudFormation
-template](infrastructure/cloudformation.yml) and the two GitHub Actions deploy
-workflows.
+## Live demo
 
-## Quick start (local)
+<table>
+  <tr>
+    <td><strong>Dashboard</strong></td>
+    <td><a href="https://dlblyfqhsm6re.cloudfront.net">https://dlblyfqhsm6re.cloudfront.net</a></td>
+  </tr>
+  <tr>
+    <td><strong>API root</strong></td>
+    <td><a href="https://dlblyfqhsm6re.cloudfront.net/api">https://dlblyfqhsm6re.cloudfront.net/api</a></td>
+  </tr>
+  <tr>
+    <td><strong>Swagger UI</strong></td>
+    <td><a href="https://dlblyfqhsm6re.cloudfront.net/api/docs">https://dlblyfqhsm6re.cloudfront.net/api/docs</a></td>
+  </tr>
+  <tr>
+    <td><strong>Stats endpoint</strong></td>
+    <td><a href="https://dlblyfqhsm6re.cloudfront.net/api/stats">https://dlblyfqhsm6re.cloudfront.net/api/stats</a></td>
+  </tr>
+</table>
+
+> Hosted on AWS `eu-west-3` (Paris) by the [CloudFormation
+> template](infrastructure/cloudformation.yml) and two GitHub Actions deploy
+> workflows. Idle cost: ~$50/month. Tear down with `aws cloudformation
+> delete-stack` when done.
+
+## Highlights
+
+- **Idempotent writes by design.** Every `POST /transactions` carries an
+  `Idempotency-Key`; the database's PRIMARY KEY constraint is the
+  synchronization primitive — no application-level locks. Verified by a 100-
+  parallel test that produces exactly 1 row + 100 identical responses.
+- **Empirical realism.** Synthetic transactions are sampled from log-normal
+  latencies, empirical wilaya / channel / device frequencies, and a 67.3 %
+  success rate — all extracted from the 100 k-row historical dataset and
+  documented in [`eda/analysis.ipynb`](eda/analysis.ipynb).
+- **One-command boot.** `docker compose up` brings the full stack up locally
+  in under a minute (postgres + 100 k-row seed + API + frontend).
+- **Production-grade deployment.** A single CloudFormation template
+  provisions VPC, ALB, ECS Fargate, RDS, ECR, Secrets Manager, S3 + CloudFront
+  with `/api` routing, and a GitHub OIDC role — no long-lived AWS keys.
+- **Full test coverage of the critical path.** 24 backend tests including the
+  100-parallel idempotency canary and the pagination boundary cases.
+
+## Quick start
+
+<details open>
+  <summary><strong>Local development</strong> (docker-compose, ~1 minute)</summary>
 
 ```bash
 git clone https://github.com/SidiElvaly/nafad-pay-g2.git
@@ -29,37 +76,67 @@ docker compose up
 ```
 
 Then open:
-- **Frontend** — http://localhost:3000
-- **API docs (Swagger)** — http://localhost:8000/docs
-- **Stats** — http://localhost:8000/stats
 
-A clean boot takes about a minute (the seed loader copies 100 k rows into Postgres).
+| | |
+|---|---|
+| Frontend | <http://localhost:3000> |
+| Swagger | <http://localhost:8000/docs> |
+| Stats | <http://localhost:8000/stats> |
 
-## What this project does
+The seed loads 100 k rows on first boot if `data/historical_transactions.csv`
+is present (download from the course materials — it is gitignored at 24 MB).
+Without it, the stack still boots and the database is empty.
+</details>
 
-A small but realistic banking-style system. The frontend lets you trigger batch
-generation of synthetic transactions and see them appear live in a paginated
-table. Stats refresh every 5 seconds. Behind the scenes, the API enforces
-**SHA256-based idempotency** so retries never duplicate writes — the most
-heavily-tested behaviour in the codebase.
+<details>
+  <summary><strong>Run the backend test suite</strong></summary>
 
-## Why React + Vite (not Next.js)
+```bash
+docker run -d --name pgtest -p 5433:5432 -e POSTGRES_PASSWORD=test postgres:16
+export TEST_DATABASE_URL=postgresql+asyncpg://postgres:test@localhost:5433/postgres
+cd api
+pip install -e ".[dev]"
+pytest --cov=app --cov-report=term-missing
+```
 
-This is a single-page dashboard with no SEO needs and no per-route data-fetching, so **React + Vite (SPA)** keeps things minimal — one `index.html` served by nginx, all rendering in the browser, no Node runtime in production. Next.js would add SSR/edge complexity we don't use; the same UX would cost an always-on Node container in the deployment topology.
+24 tests across endpoints, pagination, and idempotency. The most important
+case is `tests/test_idempotency.py::test_100_parallel_requests_one_row` —
+100 concurrent `POST /transactions` with the same `Idempotency-Key` produce
+exactly 1 row in the database and 100 identical responses.
+</details>
+
+<details>
+  <summary><strong>Deploy your own copy on AWS</strong> (~15 minutes)</summary>
+
+```bash
+aws cloudformation deploy \
+  --region eu-west-3 \
+  --stack-name nafad-pay-g2 \
+  --template-file infrastructure/cloudformation.yml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides DBPassword='pick-something-strong-12chars-min'
+```
+
+Then copy the stack outputs into the GitHub repo's variables and secrets
+(table in [`infrastructure/README.md`](infrastructure/README.md)) and trigger
+the two deploy workflows. See [`docs/deployment-notes.md`](docs/deployment-notes.md)
+for the full bootstrap walkthrough.
+</details>
 
 ## Architecture
 
-### Local development (docker-compose)
+### Local development
 
 ```mermaid
 flowchart LR
-    Browser([Browser]) -->|HTTP :3000| Nginx[nginx<br/>frontend SPA]
-    Browser -->|HTTP :8000| API[FastAPI<br/>asyncpg]
-    Nginx -.fetches static.-> Disk[(Vite dist/)]
-    API -->|TCP :5432| PG[(PostgreSQL 16<br/>seeded 100k rows)]
+    Browser([Browser]) -->|HTTP :3000| Nginx[nginx<br/>Vite static build]
+    Browser -->|HTTP :8000| API[FastAPI<br/>asyncpg pool]
+    API -->|TCP :5432| PG[(PostgreSQL 16<br/>100 k seeded rows)]
 
     classDef svc fill:#1e293b,stroke:#3157e0,color:#fff,stroke-width:1.5px;
+    classDef db  fill:#fff,stroke:#336791,color:#336791,stroke-width:1.5px;
     class Nginx,API svc;
+    class PG db;
 ```
 
 ### AWS production
@@ -88,158 +165,133 @@ architecture-beta
     ecs:T --> B:logs
 ```
 
-**Routing (CloudFront has two cache behaviors):**
-- `/api/*` → ALB → ECS Fargate (`/api` prefix is preserved by CloudFront and stripped server-side via FastAPI's `root_path="/api"`)
-- everything else → S3 frontend bucket (with SPA fallback to `/index.html`)
+CloudFront has two cache behaviors:
 
-**Endpoints:**
-- `POST /transactions` — full SHA256-based idempotency
-- `GET  /transactions` — paginated, max 100
-- `GET  /stats` — one aggregate SQL query
-- `POST /simulate/batch` — bulk insert in chunks of 500
+- `/api/*` → ALB → ECS Fargate. The `/api` prefix is preserved by CloudFront
+  and stripped server-side by FastAPI's `root_path="/api"`, which keeps
+  Swagger UI's spec-fetch path correct.
+- everything else → S3, with a SPA fallback to `/index.html`.
 
-## AWS deployment
+## API
 
-One CloudFormation stack creates the full Early-Stage architecture (VPC, ALB,
-ECS cluster, RDS, ECR, Secrets Manager, S3, CloudFront, GitHub OIDC role) in
-~15 minutes. See [`infrastructure/README.md`](infrastructure/README.md) for the
-exact `aws cloudformation deploy` command and the GitHub variables/secrets
-table you need to populate from the stack outputs.
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/transactions` | Create a transaction. Requires `Idempotency-Key` header. SHA256 hash of body is stored alongside the response payload; replays return the cached response, mismatches return 422. |
+| `GET` | `/transactions?limit=&offset=` | Paginated list ordered by `(date DESC, time DESC, id DESC)`. `limit` capped at 100. |
+| `GET` | `/stats` | Aggregate query: `today_volume`, `success_rate`, `tx_per_second` (over the last 60 s), `total_count`. |
+| `POST` | `/simulate/batch?n=` | Bulk-insert N synthetic rows (1–10 000) using the empirical distributions in [`api/app/simulator.py`](api/app/simulator.py). |
 
-After the stack is up, the two GitHub Actions deploy workflows take over —
-they assume the OIDC role (no long-lived AWS keys in GitHub):
+Full contract: [`api-contract.md`](api-contract.md). Live OpenAPI spec:
+<https://dlblyfqhsm6re.cloudfront.net/api/openapi.json>.
 
-- [`.github/workflows/deploy-api.yml`](.github/workflows/deploy-api.yml) —
-  builds `api/Dockerfile` → pushes to ECR → renders a new ECS task definition
-  with the new image → bumps `desiredCount` from 0 to 1 on the first run →
-  waits for service stability.
-- [`.github/workflows/deploy-frontend.yml`](.github/workflows/deploy-frontend.yml) —
-  `npm ci` → `npm run build` (Vite, with `VITE_API_URL` injected) → `aws s3
-  sync dist/` (immutable cache for hashed assets, no-cache for `index.html`)
-  → `aws cloudfront create-invalidation`.
+## Tech stack
 
-Idle cost: **~$50–60 / month**. Tear down with `aws cloudformation delete-stack`
-when you're done with the demo.
+| Layer | Tools |
+|---|---|
+| **Backend** | FastAPI 0.110 · SQLAlchemy 2.0 (async) · asyncpg · Pydantic v2 · NumPy (simulator) · uvicorn |
+| **Frontend** | React 18 · Vite 5 · TypeScript 5.5 · Tailwind CSS · Inter font |
+| **Database** | PostgreSQL 16 · BIGSERIAL primary keys · JSONB idempotency cache |
+| **Local infra** | Docker Compose (postgres + api + nginx-frontend) |
+| **Cloud infra** | CloudFormation · ECS Fargate · ALB · RDS · CloudFront · S3 · Secrets Manager · ECR · CloudWatch · IAM OIDC |
+| **CI/CD** | GitHub Actions: backend tests + frontend build + compose smoke + two OIDC deploy workflows |
+| **Tests** | pytest · pytest-asyncio · httpx · ruff |
 
-## Repo structure
+## Project structure
 
 ```
 nafad-pay-g2/
-├── docker-compose.yml         wires the 3 services together (local)
-├── Makefile                   common commands (up, test, smoke)
-├── README.md                  this file
-├── .env.example               environment template
-├── api-contract.md            locked JSON contract for the 4 endpoints
-│
-├── api/                       FastAPI backend
+├── api/                          FastAPI backend
+│   ├── app/                          main.py · routes.py · models.py · schemas.py · db.py · simulator.py
+│   ├── tests/                        24 tests (idempotency · pagination · endpoints)
 │   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── app/
-│   │   ├── main.py            FastAPI app + CORS + lifespan (table create-if-missing)
-│   │   ├── routes.py          the 4 endpoints (idempotency core)
-│   │   ├── models.py          SQLAlchemy ORM
-│   │   ├── schemas.py         Pydantic v2 schemas
-│   │   ├── db.py              async engine + session factory
-│   │   └── simulator.py       synthetic generator
-│   └── tests/
-│       ├── test_idempotency.py    100-parallel + replay + 422
-│       ├── test_pagination.py
-│       └── test_endpoints.py
+│   └── pyproject.toml
 │
-├── frontend/                  React + Vite + Tailwind SPA
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── .env.example           VITE_API_URL template
-│   └── src/
-│       ├── App.tsx
-│       ├── api.ts
-│       ├── types.ts
-│       └── components/
-│           ├── BatchForm.tsx
-│           ├── TxTable.tsx
-│           ├── StatsBanner.tsx
-│           ├── Toast.tsx
-│           ├── Modal.tsx
-│           ├── CreateTxModal.tsx
-│           └── TxDetailsModal.tsx
+├── frontend/                     React + Vite + Tailwind SPA
+│   ├── src/
+│   │   ├── App.tsx · api.ts · types.ts
+│   │   └── components/               BatchForm · TxTable · StatsBanner · Toast · Modal · CreateTxModal · TxDetailsModal
+│   ├── .env.example                  VITE_API_URL template
+│   └── Dockerfile                    multi-stage: node build → nginx serve
 │
-├── data/                      seed data (CSV files)
-├── sql/01_init.sql            DDL + indexes + COPY FROM csv (local Postgres only)
+├── data/                         seed data
+│   ├── historical_transactions.csv   (24 MB, gitignored — download separately)
+│   ├── reference_wilayas.csv         15 wilayas + economic weights
+│   ├── reference_tx_types.csv        8 transaction types
+│   └── reference_categories.csv      merchant categories
 │
-├── eda/                       exploratory analysis
-│   ├── analysis.ipynb         Jupyter notebook reproducing all figures
-│   ├── analysis.md            written report answering the 5 questions
-│   ├── numbers-cheatsheet.md  quick-reference card for the architecture docs
-│   ├── requirements.txt       notebook deps
-│   └── figures/*.png          rendered charts (q1-5 + 4 distribution figures)
+├── sql/
+│   ├── 01_init.sql               DDL + indexes
+│   └── 02_seed.sh                guarded COPY (skips silently if CSV absent)
 │
-├── docs/                      architecture documents
-│   ├── architecture-early-stage.md       MVP single-AZ on AWS
-│   ├── architecture-at-scale.md          > 500 QPS, multi-AZ, full security checklist
-│   ├── investigation-answers.md          4 distributed-systems answers
-│   ├── idempotency-implementation.md     reference note
-│   ├── deployment-notes.md               GitHub vars/secrets + AWS ARN placeholders
-│   └── diagrams/                         PNG exports of C4 diagrams
+├── eda/                          exploratory analysis
+│   ├── analysis.ipynb            Jupyter notebook reproducing all figures
+│   ├── analysis.md               written report (5 investigation questions)
+│   ├── numbers-cheatsheet.md     quick-reference card for architecture docs
+│   ├── figures/                  9 PNG charts (Q1-Q5 + 4 distributions)
+│   └── requirements.txt
+│
+├── docs/                         architecture documents
+│   ├── architecture-early-stage.md   single-AZ MVP (~$50/month)
+│   ├── architecture-at-scale.md      multi-AZ at 500+ QPS, full §8 security checklist
+│   ├── investigation-answers.md      4 distributed-systems answers
+│   ├── idempotency-implementation.md
+│   ├── deployment-notes.md           GitHub vars/secrets + AWS ARN placeholders
+│   └── diagrams/                     PNG exports of C4 diagrams
 │
 ├── infrastructure/
-│   ├── cloudformation.yml                full Early-Stage stack (33 resources)
-│   └── README.md                         deploy instructions
+│   ├── cloudformation.yml        full Early-Stage stack (33 resources)
+│   └── README.md                 deploy walkthrough + tear-down
 │
-├── scripts/bootstrap.sh       one-time setup helper (local)
-└── .github/workflows/
-    ├── ci.yml                 backend tests + frontend build + compose smoke
-    ├── deploy-api.yml         build → ECR → ECS Fargate (OIDC)
-    └── deploy-frontend.yml    Vite build → S3 → CloudFront invalidation (OIDC)
+├── .github/workflows/
+│   ├── ci.yml                    backend tests · frontend build · compose smoke
+│   ├── deploy-api.yml            build → ECR → ECS Fargate (OIDC)
+│   └── deploy-frontend.yml       Vite build → S3 → CloudFront invalidation (OIDC)
+│
+├── docker-compose.yml
+├── api-contract.md               locked JSON contract
+├── Makefile                      common commands (up, test, smoke)
+└── scripts/bootstrap.sh
 ```
 
-## Common commands
-
-```bash
-make help            # show all commands
-make up              # docker compose up -d
-make down            # stop, keep data
-make reset           # stop + delete all data
-make logs            # tail logs
-make test            # run pytest (requires Postgres test instance)
-make smoke           # full clean-room boot + curl smoke test
-```
-
-## Running the backend tests
-
-The tests need a Postgres instance separate from the compose stack:
-
-```bash
-docker run -d --name pgtest -p 5433:5432 -e POSTGRES_PASSWORD=test postgres:16
-export TEST_DATABASE_URL=postgresql+asyncpg://postgres:test@localhost:5433/postgres
-cd api
-pip install -e ".[dev]"
-pytest --cov=app --cov-report=term-missing
-```
-
-24 tests across endpoints, pagination, and idempotency. The most important is
-`tests/test_idempotency.py::test_100_parallel_requests_one_row` — 100
-concurrent `POST /transactions` with the same `Idempotency-Key` produce
-exactly 1 row in the database and 100 identical responses.
-
-## How idempotency works (TL;DR)
+## How idempotency works
 
 `POST /transactions` requires an `Idempotency-Key` header (UUIDv4 recommended).
-The server stores the key + a SHA256 of the request body + the response payload
-in `idempotency_keys`. On retry:
+The server stores the key + a SHA256 of the canonical request body + the
+response payload in `idempotency_keys`. On retry:
 
-- Same key + same body → server returns the cached response, no second insert.
-- Same key + different body → 422 (`IDEMPOTENCY_MISMATCH`).
-- Concurrent requests with the same key → the PRIMARY KEY constraint admits one;
-  losers catch `IntegrityError`, roll back, and read the cached response.
+| Scenario | Behaviour |
+|---|---|
+| Same key + same body | Server returns the cached response — no second insert. |
+| Same key + different body | 422 `IDEMPOTENCY_MISMATCH`. |
+| Concurrent same-key requests | The PRIMARY KEY constraint admits exactly one writer; losers catch `IntegrityError`, roll back, and read the cached response. |
 
-Full explanation in [`docs/idempotency-implementation.md`](docs/idempotency-implementation.md).
+The database's unique constraint *is* the synchronization primitive — no
+application-level locks are needed. Full walk-through:
+[`docs/idempotency-implementation.md`](docs/idempotency-implementation.md).
 
-## Architecture documents
+## Documentation
 
-- [Early Stage (MVP)](docs/architecture-early-stage.md) — single-AZ, ~$50/month, 50 QPS ceiling.
-- [At Scale](docs/architecture-at-scale.md) — multi-AZ, WAF, Cognito, RDS Proxy, 500 QPS target, full §8 security checklist (transport, OWASP Top 10, observability) and DC fictional → AWS / GCP / Hetzner mapping.
-- [Investigation answers](docs/investigation-answers.md) — concurrency, clock skew, idempotency, eventual consistency.
+| Document | Description |
+|---|---|
+| [`api-contract.md`](api-contract.md) | Locked JSON shapes for all 4 endpoints. |
+| [`docs/architecture-early-stage.md`](docs/architecture-early-stage.md) | Single-AZ MVP architecture (~$50/month, 50 QPS ceiling). |
+| [`docs/architecture-at-scale.md`](docs/architecture-at-scale.md) | Multi-AZ at 500 + QPS, ADRs, full §8 security checklist (transport · OWASP Top 10 · observability), threat model, datacenter mapping (AWS / GCP / Hetzner). |
+| [`docs/idempotency-implementation.md`](docs/idempotency-implementation.md) | The 6-step algorithm + concurrency proof. |
+| [`docs/investigation-answers.md`](docs/investigation-answers.md) | Concurrency · clock skew · idempotency · eventual consistency. |
+| [`docs/deployment-notes.md`](docs/deployment-notes.md) | GitHub variables / secrets table + AWS ARN placeholders. |
+| [`eda/analysis.ipynb`](eda/analysis.ipynb) | Re-runnable notebook reproducing every figure. |
+| [`eda/numbers-cheatsheet.md`](eda/numbers-cheatsheet.md) | Quick-reference card for the architecture docs. |
+| [`infrastructure/README.md`](infrastructure/README.md) | CloudFormation deploy + tear-down. |
+
+## Why React + Vite (not Next.js)
+
+This is a single-page dashboard with no SEO needs and no per-route
+data-fetching, so **React + Vite (SPA)** keeps things minimal — one
+`index.html` served by nginx, all rendering in the browser, no Node runtime
+in production. Next.js would add SSR/edge complexity we don't use; the same
+UX would cost an always-on Node container in the deployment topology.
 
 ## License & credits
 
-Educational project for SupNum. Data is synthetic. Code authored by Group 2.
+Educational project for **SupNum**. Data is synthetic. Code authored by
+**Group 2** (Platform & API).
