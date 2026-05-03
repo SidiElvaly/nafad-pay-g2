@@ -23,14 +23,60 @@
 Numbers from `eda/numbers-cheatsheet.md`: p50 latency 233 ms, p99 ≈ 4 s, failure
 rate 32.7 %, peak ~8 tx/s.
 
-## 2. C4 diagram
+## 2. Architecture diagram
 
-![Early Stage C4](diagrams/early-stage-c4.png)
+```mermaid
+flowchart TB
+    Browser([User Browser]):::user
 
-**Level 1 — System context.** G2 connects to: end users (browser), G1's OLTP
-database (read), G3's data lake (downstream consumer of our writes via CDC).
+    subgraph AWS["AWS  eu-west-3 (Paris)"]
+        direction TB
+        CDN["CloudFront<br/>distribution"]:::cdn
 
-**Level 2 — Containers** (this Early Stage):
+        subgraph Edge["Edge / Static"]
+            S3[("S3<br/>frontend bucket")]:::storage
+        end
+
+        subgraph VPC["VPC  10.0.0.0/16  ·  single AZ  (eu-west-3a)"]
+            direction TB
+            subgraph Public["Public subnet  10.0.1.0/24"]
+                ALB["Application<br/>Load Balancer"]:::compute
+            end
+            subgraph Private["Private subnet  10.0.2.0/24"]
+                ECS["ECS Fargate<br/>1 task · 0.5 vCPU · 1 GB"]:::compute
+                RDS[("RDS PostgreSQL 16<br/>db.t4g.micro · single-AZ")]:::db
+            end
+        end
+
+        subgraph Support["Account-wide services"]
+            ECR[("ECR<br/>nafad-api image")]:::storage
+            SM["Secrets Manager<br/>DATABASE_URL"]:::sec
+            Logs["CloudWatch Logs<br/>/ecs/nafad-api"]:::ops
+        end
+    end
+
+    Browser -->|HTTPS| CDN
+    CDN -->|"default → S3"| S3
+    CDN -->|"/api/* → ALB"| ALB
+    ALB -->|HTTP :8000| ECS
+    ECS -->|TCP :5432| RDS
+    ECS -->|GetSecretValue| SM
+    ECS -.pull image.-> ECR
+    ECS -.JSON logs.-> Logs
+
+    classDef user    fill:#fff,stroke:#64748b,color:#1e293b,stroke-width:1.5px;
+    classDef cdn     fill:#8C4FFF,stroke:#5A2DA0,color:#fff,stroke-width:1.5px;
+    classDef compute fill:#FF9900,stroke:#cc7a00,color:#1e293b,stroke-width:1.5px;
+    classDef storage fill:#7AA116,stroke:#5d7d10,color:#fff,stroke-width:1.5px;
+    classDef db      fill:#3B48CC,stroke:#2a35a0,color:#fff,stroke-width:1.5px;
+    classDef sec     fill:#DD344C,stroke:#a8243a,color:#fff,stroke-width:1.5px;
+    classDef ops     fill:#FF4F8B,stroke:#cc3a6e,color:#fff,stroke-width:1.5px;
+```
+
+**System context.** G2 connects to: end users (browser), G1's OLTP database
+(read), G3's data lake (downstream consumer via CDC).
+
+**Containers in the Early Stage:**
 - 1× ECS Fargate task running the FastAPI backend behind 1× Application Load Balancer
 - React bundle on S3 + CloudFront (eu-west-3 origin)
 - 1× RDS PostgreSQL single-AZ (db.t4g.micro)

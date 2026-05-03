@@ -22,11 +22,79 @@
 
 Numbers from `eda/numbers-cheatsheet.md` extrapolated 60×.
 
-## 2. C4 diagram
+## 2. Architecture diagram
 
-![At Scale C4](diagrams/at-scale-c4.png)
+```mermaid
+flowchart TB
+    Browser([End user]):::user
+    Partner([B2B partner]):::user
 
-![Network detail](diagrams/at-scale-network.png)
+    subgraph AWS["AWS  eu-west-3 (Paris)"]
+        direction TB
+
+        subgraph EdgeLayer["Edge"]
+            CDN["CloudFront<br/>distribution"]:::cdn
+            WAF["AWS WAF<br/>CRS · SQLi · XSS<br/>rate-based rules"]:::sec
+            S3[("S3<br/>frontend bucket")]:::storage
+        end
+
+        subgraph AuthLayer["Authentication"]
+            Cognito["Cognito User Pools<br/>OAuth2 · MFA · password reset"]:::sec
+            APIGW["API Gateway<br/>usage plans · per-key quotas"]:::compute
+        end
+
+        subgraph VPC["VPC  ·  Multi-AZ  (eu-west-3a / 3b / 3c)"]
+            direction TB
+            ALB["ALB<br/>multi-AZ"]:::compute
+
+            subgraph FargateCluster["ECS Fargate auto-scaling 2 → 20"]
+                Task["nafad-api task<br/>(N replicas across 3 AZs)"]:::compute
+            end
+
+            SQS["SQS<br/>write buffer<br/>(idempotency-aware)"]:::compute
+
+            subgraph DataLayer["Data layer"]
+                Proxy["RDS Proxy<br/>connection multiplexing"]:::db
+                Primary[("RDS Postgres<br/>Multi-AZ Primary")]:::db
+                Replica[("2× Read Replicas<br/>(GET traffic)")]:::db
+            end
+        end
+
+        subgraph Ops["Cross-cutting"]
+            SM["Secrets Manager<br/>30-day auto-rotation"]:::sec
+            VPCe["VPC Endpoints<br/>S3 · Secrets · ECR"]:::ops
+            XRay["AWS X-Ray<br/>distributed traces"]:::ops
+            CW["CloudWatch<br/>p50/p95/p99 + alarms"]:::ops
+        end
+    end
+
+    Browser -->|HTTPS| CDN
+    Partner -->|HTTPS API key| WAF
+    CDN -->|edge filter| WAF
+    WAF -->|"default → S3"| S3
+    WAF -->|"end-user JWT"| Cognito
+    WAF -->|"B2B key"| APIGW
+    Cognito --> ALB
+    APIGW --> ALB
+    ALB --> Task
+    Task -->|writes| SQS
+    SQS -.async write.-> Proxy
+    Task -.reads.-> Proxy
+    Proxy --> Primary
+    Proxy -.reads.-> Replica
+    Primary -.async replicate.-> Replica
+    Task -.via VPCe.-> SM
+    Task -.traces.-> XRay
+    Task -.metrics.-> CW
+
+    classDef user    fill:#fff,stroke:#64748b,color:#1e293b,stroke-width:1.5px;
+    classDef cdn     fill:#8C4FFF,stroke:#5A2DA0,color:#fff,stroke-width:1.5px;
+    classDef compute fill:#FF9900,stroke:#cc7a00,color:#1e293b,stroke-width:1.5px;
+    classDef storage fill:#7AA116,stroke:#5d7d10,color:#fff,stroke-width:1.5px;
+    classDef db      fill:#3B48CC,stroke:#2a35a0,color:#fff,stroke-width:1.5px;
+    classDef sec     fill:#DD344C,stroke:#a8243a,color:#fff,stroke-width:1.5px;
+    classDef ops     fill:#FF4F8B,stroke:#cc3a6e,color:#fff,stroke-width:1.5px;
+```
 
 **Key components:**
 - ECS Fargate auto-scaling (2-20 tasks) across eu-west-3a/b/c
