@@ -142,27 +142,46 @@ flowchart LR
 ### AWS production
 
 ```mermaid
-architecture-beta
-    group aws(logos:aws)[AWS eu-west-3]
+flowchart TB
+    Browser([User Browser]):::user
 
-    service browser(internet)[User Browser]
-    service cdn(logos:aws-cloudfront)[CloudFront] in aws
-    service s3(logos:aws-s3)[S3 frontend bucket] in aws
-    service alb(logos:aws-elastic-load-balancing)[ALB] in aws
-    service ecs(logos:aws-ecs)[ECS Fargate] in aws
-    service ecr(logos:aws-ecr)[ECR] in aws
-    service rds(logos:aws-rds)[RDS PostgreSQL] in aws
-    service sm(logos:aws-secrets-manager)[Secrets Manager] in aws
-    service logs(logos:aws-cloudwatch)[CloudWatch Logs] in aws
+    subgraph AWS["AWS  eu-west-3 (Paris)"]
+        direction TB
+        CDN["CloudFront<br/>distribution"]:::cdn
 
-    browser:R --> L:cdn
-    cdn:T --> B:s3
-    cdn:R --> L:alb
-    alb:R --> L:ecs
-    ecs:R --> L:rds
-    ecs:B --> T:sm
-    ecs:T --> B:ecr
-    ecs:T --> B:logs
+        subgraph Edge["Edge / Static"]
+            S3[("S3<br/>frontend bucket")]:::storage
+        end
+
+        subgraph VPC["VPC  10.0.0.0/16"]
+            ALB["Application<br/>Load Balancer"]:::compute
+            ECS["ECS Fargate<br/>nafad-api task"]:::compute
+            RDS[("RDS PostgreSQL 16<br/>db.t4g.micro")]:::db
+        end
+
+        subgraph Support["Account-wide services"]
+            ECR[("ECR<br/>nafad-api image")]:::storage
+            SM["Secrets Manager<br/>DATABASE_URL"]:::sec
+            Logs["CloudWatch Logs<br/>/ecs/nafad-api"]:::ops
+        end
+    end
+
+    Browser -->|HTTPS| CDN
+    CDN -->|"default → S3"| S3
+    CDN -->|"/api/* → ALB"| ALB
+    ALB -->|HTTP :8000| ECS
+    ECS -->|TCP :5432| RDS
+    ECS -->|GetSecretValue| SM
+    ECS -.pull image.-> ECR
+    ECS -.JSON logs.-> Logs
+
+    classDef user    fill:#fff,stroke:#64748b,color:#1e293b,stroke-width:1.5px;
+    classDef cdn     fill:#8C4FFF,stroke:#5A2DA0,color:#fff,stroke-width:1.5px;
+    classDef compute fill:#FF9900,stroke:#cc7a00,color:#1e293b,stroke-width:1.5px;
+    classDef storage fill:#7AA116,stroke:#5d7d10,color:#fff,stroke-width:1.5px;
+    classDef db      fill:#3B48CC,stroke:#2a35a0,color:#fff,stroke-width:1.5px;
+    classDef sec     fill:#DD344C,stroke:#a8243a,color:#fff,stroke-width:1.5px;
+    classDef ops     fill:#FF4F8B,stroke:#cc3a6e,color:#fff,stroke-width:1.5px;
 ```
 
 CloudFront has two cache behaviors:
