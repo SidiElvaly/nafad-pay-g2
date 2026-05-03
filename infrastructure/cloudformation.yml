@@ -574,7 +574,7 @@ Resources:
           Compress: true
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # CachingOptimized (managed)
         CacheBehaviors:
-          - PathPattern: /api/*
+          - PathPattern: /api*   # matches both /api (root) and /api/...
             TargetOriginId: alb-api
             ViewerProtocolPolicy: redirect-to-https
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
