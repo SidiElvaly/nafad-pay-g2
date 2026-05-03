@@ -70,20 +70,12 @@ Conditions:
   ShouldCreateOIDC: !Equals [!Ref CreateOIDCProvider, 'true']
 
 # ----------------------------------------------------------------------------
-# Mappings
-# ----------------------------------------------------------------------------
-Mappings:
-  # CloudFront's prefix list ID for the managed-cache "AllViewerExceptHostHeader"
-  # is region-independent; we hard-code the well-known managed cache policy IDs.
-  CloudFrontPolicies:
-    Default:
-      CachePolicyOptimized: '658327ea-f89d-4fab-a63d-7e88639e58f6'   # CachingOptimized
-      CachePolicyDisabled:  '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'   # CachingDisabled
-      OriginRequestAllViewerExceptHostHeader: 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
-
-# ----------------------------------------------------------------------------
 # Resources
 # ----------------------------------------------------------------------------
+# CloudFront managed cache / origin-request policy IDs (region-agnostic):
+#   CachingOptimized                       658327ea-f89d-4fab-a63d-7e88639e58f6
+#   CachingDisabled                        4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+#   AllViewerExceptHostHeader (origin req) b689b0a8-53d0-40ab-baf2-68738e2966ac
 Resources:
 
   # =========================================================================
@@ -580,7 +572,7 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true
-          CachePolicyId: !FindInMap [CloudFrontPolicies, Default, CachePolicyOptimized]
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # CachingOptimized (managed)
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: alb-api
@@ -588,8 +580,8 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
             CachedMethods: [GET, HEAD]
             Compress: true
-            CachePolicyId: !FindInMap [CloudFrontPolicies, Default, CachePolicyDisabled]
-            OriginRequestPolicyId: !FindInMap [CloudFrontPolicies, Default, OriginRequestAllViewerExceptHostHeader]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad   # CachingDisabled (managed)
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac   # AllViewerExceptHostHeader (managed)
             FunctionAssociations:
               - EventType: viewer-request
                 FunctionARN: !GetAtt ApiPathRewriteFunction.FunctionMetadata.FunctionARN
