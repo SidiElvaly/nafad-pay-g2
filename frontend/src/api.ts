@@ -1,6 +1,6 @@
 import type { BatchResult, Stats, Transaction, TxListResponse } from './types';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+export const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {

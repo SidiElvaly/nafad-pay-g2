@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BASE_URL } from './api';
 import { BatchForm } from './components/BatchForm';
 import { CreateTxModal } from './components/CreateTxModal';
 import { StatsBanner } from './components/StatsBanner';
@@ -49,7 +50,7 @@ export default function App() {
               <span className="sm:hidden">New</span>
             </button>
             <a
-              href="http://localhost:8000/docs"
+              href={`${BASE_URL}/docs`}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden md:inline-flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700 font-semibold transition"
