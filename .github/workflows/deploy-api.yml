@@ -62,6 +62,8 @@ jobs:
           task-definition: task-definition.json
           container-name: ${{ vars.ECS_CONTAINER_NAME }}
           image: ${{ steps.build.outputs.image }}
+          environment-variables: |
+            API_ROOT_PATH=/api
 
       - name: Ensure service desiredCount >= 1
         # CloudFormation provisions the service with DesiredCount: 0 so it

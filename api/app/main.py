@@ -35,6 +35,11 @@ app = FastAPI(
         "Four endpoints with full SHA256-based idempotency on writes."
     ),
     lifespan=lifespan,
+    # When deployed behind CloudFront with a `/api/*` prefix, set
+    # API_ROOT_PATH=/api in the environment so Swagger UI fetches
+    # /api/openapi.json instead of /openapi.json. Empty by default for
+    # local docker-compose (no prefix).
+    root_path=os.environ.get("API_ROOT_PATH", ""),
 )
 
 app.add_middleware(
