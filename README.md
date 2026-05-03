@@ -39,8 +39,7 @@
 
 > Hosted on AWS `eu-west-3` (Paris) by the [CloudFormation
 > template](infrastructure/cloudformation.yml) and two GitHub Actions deploy
-> workflows. Idle cost: ~$50/month. Tear down with `aws cloudformation
-> delete-stack` when done.
+
 
 ## Highlights
 
