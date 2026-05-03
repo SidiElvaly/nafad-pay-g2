@@ -78,25 +78,5 @@ CREATE TABLE idempotency_keys (
 
 CREATE INDEX idx_idempotency_created ON idempotency_keys (created_at);
 
--- ============================================================================
--- Seed: load 100 000 historical transactions from the mounted CSV.
--- The path /data/historical_transactions.csv is mounted by docker-compose.yml
--- as a read-only volume.
--- ============================================================================
-COPY transactions (
-    id, reference, transaction_type, transaction_type_label,
-    amount, fee, total_amount, currency,
-    source_user_id, source_user_name, destination_user_id, destination_user_name,
-    merchant_id, merchant_name, merchant_code,
-    agency_id, agency_name,
-    wilaya_id, wilaya_name,
-    status, failure_reason, channel, device_type,
-    node_id, datacenter,
-    processing_latency_ms, queue_depth_at_arrival, retry_count, is_timeout, routing_key,
-    transaction_date, transaction_time, created_at
-)
-FROM '/data/historical_transactions.csv'
-WITH (FORMAT csv, HEADER true, NULL '');
-
--- Reset the sequence past the seeded ids so new INSERTs don't collide
-SELECT setval('transactions_id_seq', (SELECT MAX(id) FROM transactions));
+-- The 100 k-row seed lives in `02_seed.sh` (skipped automatically if the
+-- 24 MB historical_transactions.csv is not mounted — e.g. in CI).
