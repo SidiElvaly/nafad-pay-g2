@@ -6,10 +6,12 @@ import { StatsBanner } from './components/StatsBanner';
 import { Toast, type ToastKind } from './components/Toast';
 import { TxTable } from './components/TxTable';
 
+
 export default function App() {
   const [toast, setToast] = useState<{ kind: ToastKind; msg: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
+  
   return (
     <div className="min-h-screen">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/70 sticky top-0 z-30">
@@ -38,6 +40,7 @@ export default function App() {
               </span>
               Live
             </span>
+            
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
@@ -83,6 +86,7 @@ export default function App() {
         onSuccess={(tx) =>
           setToast({ kind: 'success', msg: `Transaction ${tx.reference} created (${tx.status})` })
         }
+        
         onError={(msg) => setToast({ kind: 'error', msg })}
       />
 
