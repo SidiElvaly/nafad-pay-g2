@@ -34,5 +34,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)" || exit 1
 
-# Use `python -m uvicorn` so we don't depend on the uvicorn shim being on PATH.
+# Use python -m uvicorn to avoid relying on the uvicorn executable being in your PATH.
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
