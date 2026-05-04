@@ -79,7 +79,7 @@ Then open:
 | Swagger | <http://localhost:8000/docs> |
 | Stats | <http://localhost:8000/stats> |
 
-The seed loads 100 k rows on first boot if `data/historical_transactions.csv`
+The seed loads 100 k-rows on first boot if `data/historical_transactions.csv`
 is present (download from the course materials — it is gitignored at 24 MB).
 Without it, the stack still boots and the database is empty.
 </details>
@@ -95,14 +95,14 @@ pip install -e ".[dev]"
 pytest --cov=app --cov-report=term-missing
 ```
 
-24 tests across endpoints, pagination, and idempotency. The most important
+24 tests across endpoints,pagination, and idempotency. The most important
 case is `tests/test_idempotency.py::test_100_parallel_requests_one_row` —
 100 concurrent `POST /transactions` with the same `Idempotency-Key` produce
 exactly 1 row in the database and 100 identical responses.
 </details>
 
 <details>
-  <summary><strong>Deploy your own copy on AWS</strong> (~15 minutes)</summary>
+  <summary><strong> Deploy your own copy on AWS </strong> ( ~ 15 minutes)</summary>
 
 ```bash
 aws cloudformation deploy \
